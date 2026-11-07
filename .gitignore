@@ -1,0 +1,21 @@
+# Dependencies
+node_modules/
+venv/
+
+# Environment variables
+.env
+.env.*
+
+# Python
+__pycache__/
+*.pyc
+
+# Build
+dist/
+build/
+
+# AI storage
+chroma_db/
+
+# IDE
+.vscode/
