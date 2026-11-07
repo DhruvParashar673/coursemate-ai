@@ -7,9 +7,11 @@ from fastapi.responses import JSONResponse
 from pymongo.errors import PyMongoError
 
 from app.api.auth import router as auth_router
+from app.api.courses import router as courses_router
 from app.api.health import router as health_router
 from app.core.database import close_mongo_connection, connect_to_mongo
 from app.services.auth import ensure_user_indexes
+from app.services.course import ensure_course_indexes
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -19,6 +21,7 @@ logger = logging.getLogger(__name__)
 async def lifespan(app: FastAPI):
     await connect_to_mongo()
     await ensure_user_indexes()
+    await ensure_course_indexes()
     yield
     await close_mongo_connection()
 
@@ -46,6 +49,7 @@ async def database_error_handler(request: Request, exc: PyMongoError):
 
 app.include_router(health_router)
 app.include_router(auth_router)
+app.include_router(courses_router)
 
 
 @app.get("/")
