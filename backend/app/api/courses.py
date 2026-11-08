@@ -8,6 +8,7 @@ from app.api.auth import get_current_user
 from app.schemas.auth import UserPublic
 from app.schemas.course import CourseCreate, CoursePublic, CourseUpdate
 from app.services import course as course_service
+from app.services import document as document_service
 
 router = APIRouter(prefix="/courses", tags=["Courses"])
 
@@ -74,6 +75,12 @@ async def delete_course(
     current_user: UserPublic = Depends(get_current_user),
     course_oid: ObjectId = Depends(valid_course_id),
 ):
+    # Ownership first (404 for missing/foreign), then cascade to the course's documents, PDFs and
+    # vector chunks, then delete the course itself. If the cascade fails the course is left intact,
+    # so the request can simply be retried.
+    if await course_service.get_course(current_user.id, course_oid) is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=_NOT_FOUND)
+    await document_service.delete_course_documents(current_user.id, str(course_oid))
     if not await course_service.delete_course(current_user.id, course_oid):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=_NOT_FOUND)
     return Response(status_code=status.HTTP_204_NO_CONTENT)

@@ -8,10 +8,14 @@ from pymongo.errors import PyMongoError
 
 from app.api.auth import router as auth_router
 from app.api.courses import router as courses_router
+from app.api.documents import router as documents_router
 from app.api.health import router as health_router
 from app.core.database import close_mongo_connection, connect_to_mongo
+from app.core.upload_limit import UploadGuardMiddleware
+from app.rag.errors import EmbeddingError, StorageError, VectorStoreError
 from app.services.auth import ensure_user_indexes
 from app.services.course import ensure_course_indexes
+from app.services.document import DocumentError, initialize_documents
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -22,6 +26,7 @@ async def lifespan(app: FastAPI):
     await connect_to_mongo()
     await ensure_user_indexes()
     await ensure_course_indexes()
+    await initialize_documents()
     yield
     await close_mongo_connection()
 
@@ -32,6 +37,9 @@ app = FastAPI(
     version="1.0.0",
     lifespan=lifespan,
 )
+
+
+app.add_middleware(UploadGuardMiddleware)
 
 
 @app.exception_handler(RequestValidationError)
@@ -47,9 +55,24 @@ async def database_error_handler(request: Request, exc: PyMongoError):
     return JSONResponse(status_code=503, content={"detail": "Service temporarily unavailable"})
 
 
+@app.exception_handler(DocumentError)
+async def document_error_handler(request: Request, exc: DocumentError):
+    # Fixed, client-safe messages only (no paths, no internals).
+    return JSONResponse(status_code=exc.status_code, content={"detail": exc.detail})
+
+
+@app.exception_handler(VectorStoreError)
+@app.exception_handler(EmbeddingError)
+@app.exception_handler(StorageError)
+async def backend_unavailable_handler(request: Request, exc: Exception):
+    logger.error("Backend component error on %s %s: %s", request.method, request.url.path, type(exc).__name__)
+    return JSONResponse(status_code=503, content={"detail": "Service temporarily unavailable"})
+
+
 app.include_router(health_router)
 app.include_router(auth_router)
 app.include_router(courses_router)
+app.include_router(documents_router)
 
 
 @app.get("/")
