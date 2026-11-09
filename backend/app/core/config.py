@@ -34,6 +34,18 @@ class Settings(BaseSettings):
     CHROMA_PERSIST_DIR: Path = BACKEND_DIR / "chroma_db"
     CHROMA_COLLECTION_NAME: str = Field(default="course_chunks", min_length=3)
 
+    # --- LLM question answering (Module 5). Keys are optional: a provider without a key is skipped. ---
+    GROQ_API_KEY: SecretStr | None = None  # primary
+    GEMINI_API_KEY: SecretStr | None = None  # fallback
+    GROQ_MODEL: str = "openai/gpt-oss-120b"
+    GEMINI_MODEL: str = "gemini-flash-latest"  # alias: follows Google's current Flash model
+    GROQ_REASONING_EFFORT: str | None = None  # "low" | "medium" | "high" for reasoning models; unset = not sent
+    LLM_TIMEOUT_SECONDS: int = Field(default=30, ge=5, le=120)
+    LLM_MAX_OUTPUT_TOKENS: int = Field(default=2048, ge=128, le=8192)  # reasoning models spend this on thinking too
+    LLM_TEMPERATURE: float = Field(default=0.1, ge=0.0, le=1.0)
+    QA_MAX_CONTEXT_CHARS: int = Field(default=12000, ge=1000, le=60000)
+    QA_MIN_SCORE: float = Field(default=0.0, ge=0.0, le=1.0)  # 0 = off; calibrate against the real model first
+
     model_config = SettingsConfigDict(
         env_file=BACKEND_DIR / ".env",
         env_file_encoding="utf-8",
@@ -47,6 +59,15 @@ class Settings(BaseSettings):
         if len(value.get_secret_value()) < 32:
             raise ValueError("JWT_SECRET_KEY must be at least 32 characters")
         return value
+
+    @field_validator("GROQ_REASONING_EFFORT", mode="before")
+    @classmethod
+    def _blank_effort_is_unset(cls, value):
+        if value is None or (isinstance(value, str) and value.strip().lower() in ("", "none")):
+            return None
+        if str(value).strip().lower() not in ("low", "medium", "high"):
+            raise ValueError("GROQ_REASONING_EFFORT must be low, medium or high")
+        return str(value).strip().lower()
 
     @field_validator("UPLOAD_DIR", "CHROMA_PERSIST_DIR")
     @classmethod
