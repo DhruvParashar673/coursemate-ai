@@ -79,3 +79,33 @@ http://localhost:8000/docs
 Project Status
 Core backend and frontend integration completed.
 Built with React, FastAPI, MongoDB, ChromaDB and LLM-powered RAG.
+
+## System Architecture
+
+```mermaid
+flowchart TD
+    U[Student] --> FE[React Frontend]
+
+    FE --> API[FastAPI Backend]
+
+    API --> AUTH[JWT Authentication]
+    API --> DB[(MongoDB Atlas)]
+
+    API --> PDF[PDF Processing]
+    PDF --> CHUNK[Text Extraction & Chunking]
+    CHUNK --> VS[(ChromaDB Vector Store)]
+
+    FE --> CHAT[AI Chat]
+    CHAT --> API
+    API --> RET[Relevant Context Retrieval]
+    RET --> VS
+
+    RET --> LLM[Groq / Gemini LLM]
+    LLM --> ANS[Grounded Answer + Citations]
+
+    API --> SUM[Chapter Summaries]
+    API --> IQ[Important Questions]
+
+    ANS --> FE
+    SUM --> FE
+    IQ --> FE
