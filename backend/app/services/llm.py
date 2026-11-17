@@ -11,6 +11,7 @@ import asyncio
 import logging
 import threading
 from typing import Protocol
+from collections.abc import Callable
 
 from app.core.config import Settings, get_settings
 
@@ -29,7 +30,8 @@ class LLMProviderError(Exception):
 class LLMUnavailableError(Exception):
     """No provider could produce an answer (none configured, or all failed)."""
 
-
+class LLMInvalidOutputError(LLMUnavailableError):
+    """All providers returned output that failed structured validation."""
 class LLMProvider(Protocol):
     name: str
 
@@ -37,6 +39,7 @@ class LLMProvider(Protocol):
 
 
 def _describe(exc: BaseException) -> str:
+
     status = getattr(exc, "status_code", None) or getattr(exc, "code", None)
     return f"{type(exc).__name__}" + (f" (HTTP {status})" if isinstance(status, int) else "")
 
@@ -143,11 +146,15 @@ def get_providers() -> list[LLMProvider]:
     return _providers
 
 
-async def generate_answer(system: str, user: str) -> tuple[str, str]:
-    """Return (text, provider_name) from the first provider that yields a non-empty answer."""
+async def generate_answer(
+    system: str,
+    user: str,
+    validate: Callable[[str], bool] | None = None,
+) -> tuple[str, str]:
+    """Return the first non-empty response accepted by the optional validator."""
     providers = get_providers()
     if not providers:
-        logger.error("No LLM provider configured: set GROQ_API_KEY and/or GEMINI_API_KEY")
+        logger.error("No LLM provider configured")
         raise LLMUnavailableError("no provider configured")
 
     for provider in providers:
@@ -157,11 +164,26 @@ async def generate_answer(system: str, user: str) -> tuple[str, str]:
             hint = " - model name may be retired or misspelled" if "404" in exc.reason else ""
             logger.warning("LLM provider %s failed: %s%s", provider.name, exc.reason, hint)
             continue
-        except Exception as exc:  # defensive: never let one provider's bug skip the fallback
+        except Exception as exc:
             logger.warning("LLM provider %s failed: %s", provider.name, type(exc).__name__)
             continue
-        if text and text.strip():
-            return text, provider.name
-        logger.warning("LLM provider %s returned an empty response", provider.name)
+
+        if not text or not text.strip():
+            logger.warning("LLM provider %s returned an empty response", provider.name)
+            continue
+
+        if validate is not None:
+            try:
+                if not validate(text):
+                    logger.warning("LLM provider %s returned invalid structured output", provider.name)
+                    continue
+            except Exception as exc:
+                logger.warning("LLM validation failed: %s", type(exc).__name__)
+                continue
+
+        return text, provider.name
+
+    if validate is not None:
+        raise LLMInvalidOutputError("all providers returned invalid output")
 
     raise LLMUnavailableError("all providers failed")

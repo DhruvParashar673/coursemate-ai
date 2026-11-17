@@ -46,6 +46,12 @@ class Settings(BaseSettings):
     QA_MAX_CONTEXT_CHARS: int = Field(default=12000, ge=1000, le=60000)
     QA_MIN_SCORE: float = Field(default=0.0, ge=0.0, le=1.0)  # 0 = off; calibrate against the real model first
 
+    # --- AI learning features (Module 6) ---
+    LEARN_MAX_CONTEXT_CHARS: int = Field(default=24000, ge=2000, le=100000)  # source text per LLM call
+    LEARN_MAX_PAGES: int = Field(default=30, ge=1, le=200)  # page-range size for document-mode requests
+    LEARN_TOPIC_TOP_K: int = Field(default=8, ge=1, le=20)  # chunks retrieved for topic-mode requests
+    LEARN_SUMMARY_MAX_MAP_CALLS: int = Field(default=6, ge=1, le=10)  # max "map" LLM calls per chapter summary (+1 reduce)
+
     model_config = SettingsConfigDict(
         env_file=BACKEND_DIR / ".env",
         env_file_encoding="utf-8",

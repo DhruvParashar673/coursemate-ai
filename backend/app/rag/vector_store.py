@@ -203,3 +203,48 @@ def query_chunks(
             result["documents"][0], result["metadatas"][0], result["distances"][0]
         )
     ]
+
+
+def get_document_chunks(
+    user_id: str,
+    course_id: str,
+    document_id: str,
+    start_page: int,
+    end_page: int,
+) -> list[RetrievedChunk]:
+    """Retrieve all chunks for a document page range in reading order."""
+    if start_page < 1 or end_page < start_page:
+        raise ValueError("Invalid page range")
+
+    try:
+        result = get_collection().get(
+            where={
+                "$and": [
+                    _scope(user_id, course_id, document_id),
+                    {"page_number": {"$gte": start_page}},
+                    {"page_number": {"$lte": end_page}},
+                ]
+            },
+            include=["documents", "metadatas"],
+        )
+    except VectorStoreError:
+        raise
+    except Exception as exc:
+        logger.error("Chroma document read failed: %s", type(exc).__name__)
+        raise VectorStoreError("vector store read failed") from None
+
+    chunks = [
+        RetrievedChunk(
+            chunk_id=meta["chunk_id"],
+            document_id=meta["document_id"],
+            page_number=int(meta["page_number"]),
+            text=text,
+            score=0.0,
+        )
+        for text, meta in zip(result["documents"], result["metadatas"])
+    ]
+
+    return sorted(chunks, key=lambda chunk: (
+        chunk.page_number,
+        int(chunk.chunk_id.rsplit("_", 1)[-1]),
+    ))
